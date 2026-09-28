@@ -840,6 +840,33 @@ void CSysMatrix<ScalarType>::SetValDiagonalZero() {
   END_SU2_OMP_FOR
 }
 
+template <unsigned long N, class ScalarType>
+FORCEINLINE void GaussEliminationFixed(ScalarType* matrix, ScalarType* vec) {
+#define A(I, J) matrix[(I)*N + (J)]
+
+  for (auto iVar = 1ul; iVar < N; iVar++) {
+    for (auto jVar = 0ul; jVar < iVar; jVar++) {
+      RegularizePivot(A(jVar, jVar), jVar, jVar, "DEBUG GaussElimination");
+
+      const ScalarType weight = A(iVar, jVar) / A(jVar, jVar);
+
+      for (auto kVar = jVar; kVar < N; kVar++) A(iVar, kVar) -= weight * A(jVar, kVar);
+      vec[iVar] -= weight * vec[jVar];
+    }
+  }
+
+  for (auto iVar = N; iVar > 0ul;) {
+    iVar--;
+    for (auto jVar = iVar + 1; jVar < N; jVar++) vec[iVar] -= A(iVar, jVar) * vec[jVar];
+
+    RegularizePivot(A(iVar, iVar), iVar, iVar, "DEBUG GaussElimination backsubst");
+
+    vec[iVar] /= A(iVar, iVar);
+  }
+
+#undef A
+}
+
 template <class ScalarType>
 void CSysMatrix<ScalarType>::GaussElimination(ScalarType* matrix, ScalarType* vec) const {
 #ifdef USE_MKL_LAPACK
@@ -854,6 +881,10 @@ void CSysMatrix<ScalarType>::GaussElimination(ScalarType* matrix, ScalarType* ve
     LAPACKE_sgetrs(LAPACK_ROW_MAJOR, 'N', nVar, 1, matrix, nVar, ipiv, vec, 1);
   }
 #else
+  if (nVar == 4) {
+    GaussEliminationFixed<4>(matrix, vec);
+    return;
+  }
 #define A(I, J) matrix[(I)*nVar + (J)]
 
   /*--- Transform system in Upper Matrix ---*/
